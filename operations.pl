@@ -32,25 +32,31 @@
 %%       followed by Num continous ref(0) cells.
 %%   free(ID, Old_Mem, New_Mem) -- delete ID cell from memory.
 %%   assign(ID, Data, Old_Mem, New_Mem) -- replace data pointed by ID with Data.
-%%   sum(A, B, Result)
-%%   sum(A, B, Result, Mem, Mem) -- Result is A + B.
-%%   sub(A, B, Result)
-%%   sub(A, B, Result, Mem, Mem) -- Result is A - B.
-%%   mul(A, B, Result)
-%%   mul(A, B, Result, Mem, Mem) -- Result is A * B.
-%%   div(A, B, Result)
-%%   div(A, B, Result, Mem, Mem) -- Result is A / B.
+%%   elt(A, N, Ref, Mem, Mem) -- get Ref to N element of array A.
+%%   sumi(A, B, Result)
+%%   sum(A_Ref, B_Ref, Result_Ref, Mem, Mem) -- Result is A + B.
+%%   subi(A, B, Result)
+%%   sub(A_Ref, B_Ref, Result_Ref, Mem, Mem) -- Result is A - B.
+%%   muli(A, B, Result)
+%%   mul(A_Ref, B_Ref, Result_Ref, Mem, Mem) -- Result is A * B.
+%%   divi(A, B, Result)
+%%   div(A_Ref, B_Ref, Result_Ref, Mem, Mem) -- Result is A / B.
+%%   if(Condition, Then_List, Else_List, Result_List, Mem, Mem) --
+%%       Result_List is result list of commands. Else if Condition -- pointer
+%%       to num(0) or ref(0). Else -- true.
 %%   :- multifile(user_function/2) -- user_function/2 used for function
 %%       definition.
 %%   eval1(Head, Body, Old_Mem, New_Mem) -- 1 step evaluation. Directly eval
 %%       built in functions, and use user_function/2 for user defined functions.
+%%   eval(Command_List, Old_Mem, New_Mem) -- sequencialy eval list of commands.
+%%   run(Command_List, Result_Mem) -- evaluate Command_List with empty original memory
 
 %%% Code:
 
 :- include('memory.pl').
 
 %% Dereference
-deref(ref(0), _, Mem, Mem) :- !, fail.
+deref(ref(0), _, Mem, Mem) :- !, fail.		% TODO: Может быть использовать 
 deref(ref(A), R) --> mem_get(ref(A), R), {!}.
 
 %% Allocation/deallocation
@@ -61,25 +67,60 @@ free(Ref) --> mem_del(Ref). 			% Free this item
 
 %% assignment
 assign(ID, Data) --> mem_mod(ID, Data).
+%% arrat getter
+elt(A, N, R) --> 
+	deref(A, R1),
+	{ A = ref(N0),
+	  R1 = array(N1),
+	  N =< N1,
+	  NRef is N0 + N,
+	  R = ref(NRef) }.
 
 %% Arithmetic
-sum(num(A), num(B), num(R)) :- R is A + B.
-sum(A,B,R,Mem,Mem) :- sum(A,B,R).
-sub(num(A), num(B), num(R)) :- R is A - B.
-sub(A,B,R,Mem,Mem) :- sub(A,B,R).
-mul(num(A), num(B), num(R)) :- R is A * B.
-mul(A,B,R,Mem,Mem) :- mul(A,B,R).
-div(num(A), num(B), num(R)) :- R is A / B.
-div(A,B,R,Mem,Mem) :- div(A,B,R).
+sumi(num(A), num(B), num(R)) :- R is A + B.
+sum(A,B,R) --> deref(A, A1), deref(B, B1), { sumi(A1,B1,Data) }, assign(R, Data).
+
+subi(num(A), num(B), num(R)) :- R is A - B.
+sub(A,B,R) --> deref(A, A1), deref(B, B1), { subi(A1,B1,Data) }, assign(R, Data).
+
+muli(num(A), num(B), num(R)) :- R is A * B.
+mul(A,B,R) --> deref(A, A1), deref(B, B1), { muli(A1,B1,Data) }, assign(R, Data).
+
+divi(num(A), num(B), num(R)) :- R is A / B.
+div(A,B,R) --> deref(A, A1), deref(B, B1), { divi(A1,B1,Data) }, assign(R, Data).
+
+if(A, TL, EL, RL) -->
+	deref(A, A1),
+	{   A1 = num(0) ->
+	    RL = EL
+	;   A1 = ref(0) ->
+	    RL = EL
+	;
+	    RL = TL
+	}.
 
 :- multifile(user_function/2).
 
-eval1(sum(A, B), R) --> sum(A, B, R).
-eval1(sub(A, B), R) --> sub(A, B, R).
-eval1(mul(A, B), R) --> mul(A, B, R).
-eval1(div(A, B), R) --> div(A, B, R).
-eval1(deref(X), R) --> deref(X, R).
-eval1(alloc_item, R) --> alloc_item(R).
-eval1(alloc_array(N), R) --> alloc_array(N, R).
+eval1(sum(A, B, R), []) --> sum(A, B, R).
+eval1(sub(A, B, R), []) --> sub(A, B, R).
+eval1(mul(A, B, R), []) --> mul(A, B, R).
+eval1(div(A, B, R), []) --> div(A, B, R).
+eval1(deref(X, R), []) --> deref(X, R).
+eval1(alloc_item(R), []) --> alloc_item(R).
+eval1(alloc_array(N, R), []) --> alloc_array(N, R).
+eval1(assign_value(Ref, Data), []) --> assign(Ref,Data).
+eval1(assign(Ref1, Ref2), []) --> deref(Ref1, Data), assign(Ref2,Data).
+eval1(elt(A, N, R), []) --> elt(A, N, R).
+eval1(display(X), [], Mem, Mem) :- format("DISPLAY: ~p~n", [X]).
+eval1(if(A, TL, EL), RL) --> if(A, TL, EL, RL).
+eval1(while(A, IL), RL) --> { append(IL, [while(A, IL)], IL1) }, if(A, IL1, [], RL).
+eval1(free(Ref), []) --> free(Ref).
+eval1(unset(_), [], Mem, Mem).		      % do nothing. Just flag.
+eval1(pass, [], Mem, Mem).		      % do nothing. Just flag.
+eval1(copy(A,A), [], Mem, Mem).	% simple create second name for variable.
 eval1(Head, Body, Mem, Mem) :- user_function(Head, Body).
 %% TODO: initialization facility
+eval([O|OL]) --> eval1(O,R), { append(R, OL, RL) }, eval(RL).
+eval([], M, M).
+
+run(OL, Result_Mem) :- empty_memory(New_Mem), eval(OL, New_Mem, Result_Mem).
