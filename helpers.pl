@@ -21,7 +21,9 @@
 %%% Commentary:
 
 %% This module contain helper functions:
-%% 
+%%
+%%   todo_me -- throw simple exception. Created like haskell `undefined' item.
+%%
 %%   delete_unified(List1, Elt, List2) -- removes all occurrences of Elt in
 %%       List1 to provide List2. Elt occurrences by mean of unification =/2
 %% 
@@ -30,6 +32,8 @@
 %%       unification =/2
 
 %%% Code:
+
+todo_me :- throw('not created code').
 
 delete_unified([], _, []).
 delete_unified([E | List1], E, List2) :- delete_unified(List1, E, List2).
