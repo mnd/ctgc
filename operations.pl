@@ -25,52 +25,60 @@
 %%
 %% This file provide next predicates:
 %%
-%%   deref(Ref, Data, Mem, Mem) -- Follow sequence of ref(_) cells started from
-%%       Ref cell and return Data contained in last cell.
-%%   deref_but_last(Ref, Data_Ref, Mem, Mem) -- Follow sequence of ref(_) cells
-%%       started from Ref cell and return Ref_Data. Ref_Data is the last ref(_)
-%%       cell in sequence.
+%%   deref(Ref, Data, Mem, Mem) -- Follow ref(A) reference. Fail on ref(0).
 %%   alloc_item(ID, Old_Mem, New_Mem) -- allocate 1 ref(0) cell in heap and
 %%       return ID of this cell.
 %%   alloc_array(Num, ID, Old_Mem, New_Mem) -- allocate array(Num) heap cell
 %%       followed by Num continous ref(0) cells.
 %%   free(ID, Old_Mem, New_Mem) -- delete ID cell from memory.
 %%   assign(ID, Data, Old_Mem, New_Mem) -- replace data pointed by ID with Data.
-%%   sum(A, B, Result, Mem, Mem) -- Result is A + B. Used deref/4 on A and B.
-%%   sub(A, B, Result, Mem, Mem) -- Result is A - B. Used deref/4 on A and B.
-%%   mul(A, B, Result, Mem, Mem) -- Result is A * B. Used deref/4 on A and B.
-%%   div(A, B, Result, Mem, Mem) -- Result is A / B. Used deref/4 on A and B.
+%%   sum(A, B, Result)
+%%   sum(A, B, Result, Mem, Mem) -- Result is A + B.
+%%   sub(A, B, Result)
+%%   sub(A, B, Result, Mem, Mem) -- Result is A - B.
+%%   mul(A, B, Result)
+%%   mul(A, B, Result, Mem, Mem) -- Result is A * B.
+%%   div(A, B, Result)
+%%   div(A, B, Result, Mem, Mem) -- Result is A / B.
+%%   Head :=: Body -- Used for function definition.
+%%   eval1(Head, Body, Old_Mem, New_Mem) -- 1 step evaluation. Directly eval
+%%       built in functions, and use :=:/2 for user defined functions.
 
 %%% Code:
 
 :- include('memory.pl').
 
 %% Dereference
-deref(ref(0), ref(0), Mem, Mem) :- !.
-deref(ref(A), R) --> mem_get(ref(A), R1), {!}, deref(R1,R).
-deref(Result, Result, Mem, Mem) :- !.
-
-%% TODO: UNUSABLE FUNCTION. Удалить?
-deref_but_last(ref(0), _Result, _Old_Memory, _New_Memory) :- !, fail.
-deref_but_last(ref(A), R) -->
-	mem_get(ref(A), ref(B)),
-	deref_but_last(ref(B),R), {!}. % Never backtrace to choices before
-				       % deref_but_last call
-deref_but_last(ref(A), ref(A), Mem, Mem) :- !.
+deref(ref(0), _, Mem, Mem) :- !, fail.
+deref(ref(A), R) --> mem_get(ref(A), R), {!}.
 
 %% Allocation/deallocation
 %% TODO: Возможно стоит использовать одно и то же имя для двух alloc_* функций
-alloc_item(ID) --> mem_add(ref(0), ID).		% 1 cell allocation.
-alloc_array(N, ID) --> mem_add(array(N), ID).	% allocate array
-free(ID) --> mem_del(ID). 			% Free this item
+alloc_item(Ref) --> mem_add(ref(0), Ref).	% 1 cell allocation.
+alloc_array(N, Ref) --> mem_add(array(N), Ref).	% allocate array
+free(Ref) --> mem_del(Ref). 			% Free this item
 
 %% assignment
-assign(ID, Data) --> mem_mod(ID1, Data).
+assign(ID, Data) --> mem_mod(ID, Data).
 
 %% Arithmetic
-sum(A, B, num(R)) --> deref(A, num(A1)), deref(B, num(B1)), { R is A1 + B1 }.
-sub(A, B, num(R)) --> deref(A, num(A1)), deref(B, num(B1)), { R is A1 - B1 }.
-mul(A, B, num(R)) --> deref(A, num(A1)), deref(B, num(B1)), { R is A1 * B1 }.
-div(A, B, num(R)) --> deref(A, num(A1)), deref(B, num(B1)), { R is A1 / B1 }.
+sum(num(A), num(B), num(R)) :- R is A + B.
+sum(A,B,R,Mem,Mem) :- sum(A,B,R).
+sub(num(A), num(B), num(R)) :- R is A - B.
+sub(A,B,R,Mem,Mem) :- sub(A,B,R).
+mul(num(A), num(B), num(R)) :- R is A * B.
+mul(A,B,R,Mem,Mem) :- mul(A,B,R).
+div(num(A), num(B), num(R)) :- R is A / B.
+div(A,B,R,Mem,Mem) :- div(A,B,R).
 
 %% TODO: function facility, initialization facility
+:- op(1190, xfx, :=:).
+
+eval1(sum(A, B), R) --> sum(A, B, R).
+eval1(sub(A, B), R) --> sub(A, B, R).
+eval1(mul(A, B), R) --> mul(A, B, R).
+eval1(div(A, B), R) --> div(A, B, R).
+eval1(deref(X), R) --> deref(X, R).
+eval1(alloc_item, R) --> alloc_item(R).
+eval1(alloc_array(N), R) --> alloc_array(N, R).
+eval1(Head, Body, Mem, Mem) :- Head :=: Body.
