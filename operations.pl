@@ -40,6 +40,8 @@
 %%   mul(A, B, Result, Mem, Mem) -- Result is A * B.
 %%   div(A, B, Result)
 %%   div(A, B, Result, Mem, Mem) -- Result is A / B.
+%%   :- multifile(user_function/2) -- user_function/2 used for function
+%%       definition.
 %%   eval1(Head, Body, Old_Mem, New_Mem) -- 1 step evaluation. Directly eval
 %%       built in functions, and use user_function/2 for user defined functions.
 
@@ -70,7 +72,8 @@ mul(A,B,R,Mem,Mem) :- mul(A,B,R).
 div(num(A), num(B), num(R)) :- R is A / B.
 div(A,B,R,Mem,Mem) :- div(A,B,R).
 
-%% TODO: function facility, initialization facility
+:- multifile(user_function/2).
+
 eval1(sum(A, B), R) --> sum(A, B, R).
 eval1(sub(A, B), R) --> sub(A, B, R).
 eval1(mul(A, B), R) --> mul(A, B, R).
@@ -79,3 +82,4 @@ eval1(deref(X), R) --> deref(X, R).
 eval1(alloc_item, R) --> alloc_item(R).
 eval1(alloc_array(N), R) --> alloc_array(N, R).
 eval1(Head, Body, Mem, Mem) :- user_function(Head, Body).
+%% TODO: initialization facility
