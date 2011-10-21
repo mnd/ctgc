@@ -40,9 +40,8 @@
 %%   mul(A, B, Result, Mem, Mem) -- Result is A * B.
 %%   div(A, B, Result)
 %%   div(A, B, Result, Mem, Mem) -- Result is A / B.
-%%   Head :=: Body -- Used for function definition.
 %%   eval1(Head, Body, Old_Mem, New_Mem) -- 1 step evaluation. Directly eval
-%%       built in functions, and use :=:/2 for user defined functions.
+%%       built in functions, and use user_function/2 for user defined functions.
 
 %%% Code:
 
@@ -72,8 +71,6 @@ div(num(A), num(B), num(R)) :- R is A / B.
 div(A,B,R,Mem,Mem) :- div(A,B,R).
 
 %% TODO: function facility, initialization facility
-:- op(1190, xfx, :=:).
-
 eval1(sum(A, B), R) --> sum(A, B, R).
 eval1(sub(A, B), R) --> sub(A, B, R).
 eval1(mul(A, B), R) --> mul(A, B, R).
@@ -81,4 +78,4 @@ eval1(div(A, B), R) --> div(A, B, R).
 eval1(deref(X), R) --> deref(X, R).
 eval1(alloc_item, R) --> alloc_item(R).
 eval1(alloc_array(N), R) --> alloc_array(N, R).
-eval1(Head, Body, Mem, Mem) :- Head :=: Body.
+eval1(Head, Body, Mem, Mem) :- user_function(Head, Body).
