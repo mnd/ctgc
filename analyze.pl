@@ -25,9 +25,15 @@
 %%% Code:
 :- include('program.pl').
 
+% print:
+% 1. If program operation create new link to memory then print "plus(cell_number)", if remove -- print "minus(cell_number)". Otherwise ignore operation
+% 2. Split probram to blocks
+% 3. Write memory reference count for every block
+% Usage: check(swap)
 check(Name) :-
 	user_function(Name, Body),
 	phrase(check1(0, _, R), Body), !,
+	print(R), nl,
 	phrase(blocks(R1), R), !,
 	print(R1), nl,
 	process_blocks(R1, [], R2), !,

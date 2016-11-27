@@ -24,6 +24,7 @@
 
 :- include('operations.pl').
 
+% You can evaluate it with "empty_memory(M), eval([swap], M, R)" to obtain resulting memory state.
 user_function(swap, [
 	alloc_item(A),
 	alloc_item(B),
