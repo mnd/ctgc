@@ -1,0 +1,122 @@
+% -*- mode: LaTeX; mode: auto-fill; mode: flyspell; coding: koi8-r; -*-
+\documentclass[14pt,a4paper,times,bachelor,
+  subf, href, fixint=false,
+  %% draft
+]{disser}
+
+\usepackage[
+  a4paper, mag=1000, includefoot,
+  left=3cm, right=1cm, top=2cm, bottom=2cm, headsep=1cm, footskip=1cm
+]{geometry}
+\usepackage[T2A]{fontenc}
+\usepackage[english,russian]{babel}
+\usepackage[koi8-r]{inputenc}
+\usepackage{indentfirst}
+\usepackage{tabularx}           % таблицы
+\sloppy
+% сокращения:
+\usepackage[intoc, russian]{nomencl}  
+\makenomenclature
+\renewcommand{\nomlabel}[1]{\hbox to 6cm{#1}} % делаем выравнивание и отступ
+\renewcommand{\nomname}{Перечень принятых в работе сокращений}
+\makeatletter
+\renewcommand\theappendix{\@arabic\c@chapter}
+
+
+\ifpdf\usepackage{epstopdf}\fi
+
+\usepackage{amssymb}            % доп. матсимволы + <= в русском стиле
+\renewcommand{\ge}{\geqslant}   % <= по умолчанию русское
+\renewcommand{\le}{\leqslant}   % >= по умолчанию русское
+
+% Номера страниц сверху справа
+\def\headfont{\small}
+\pagestyle{headright}
+\chapterpagestyle{headright}
+
+% Использовать полужирное начертание для векторов
+\let\vec=\mathbf
+
+% Включать подсекции в оглавление
+\setcounter{tocdepth}{2}
+\usepackage{indentfirst}        % отступ у первого абзаца раздела
+%\numberwithin{equation}{section}% включать в номера формул номера разделов
+
+%\graphicspath{{fig/}}
+
+\newcommand{\todo}[1]{\marginpar{TODO: #1}}
+
+\usepackage{listings}
+\lstnewenvironment{code}{\singlespacing
+  \lstset{
+    frame=lines, % обрамлять листинг линиями сверху и снизу
+    framesep=10pt, % отступ до кода
+    aboveskip=15pt,belowskip=15pt,  % отступы до и после листинга
+  }  
+}{\onehalfspacing}
+
+\newcommand{\var}[1]{{\tt #1}}
+\usepackage{tikz}
+
+
+% \usepackage{newvbtm}
+% \newverbatim{code}{\singlespacing\\\\\hline}{}{}{\onehalfspacing\hspace*{\fill}\\\hline\\}
+
+
+%% \usepackage{listings}
+%% \lstloadlanguages{Haskell}
+%% \lstnewenvironment{code}
+%%     {\singlespacing\lstset{}%
+%%       \csname lst@SetFirstLabel\endcsname}
+%%     {\onehalfspacing\csname lst@SaveFirstLabel\endcsname}
+%%     \lstset{
+%%       language=Haskell,
+%%       commentstyle=\itshape,          % меняем стиль комментариев на италик
+%%       frame=lines, % обрамлять листинг линиями сверху и снизу
+%%       framesep=10pt, texcl, % отступ до кода + комментарии в коде обрабатываются LaTeX
+%%       aboveskip=15pt,belowskip=15pt,  % отступы до и после листинга
+%%       columns=fullflexible,
+%%       basicstyle=\small\ttfamily,
+%%       flexiblecolumns=false,
+%%       basewidth={0.5em,0.45em},
+%%       literate={+}{{$+$}}1 {/}{{$/$}}1 {*}{{$*$}}1 {=}{{$=$}}1
+%%                {>}{{$>$}}1 {<}{{$<$}}1 {\\}{{$\lambda$}}1
+%%                {\\\\}{{\char`\\\char`\\}}1
+%%                {->}{{$\rightarrow$}}2 {>=}{{$\geq$}}2 {<-}{{$\leftarrow$}}2
+%%                {<=}{{$\leq$}}2 {=>}{{$\Rightarrow$}}2 
+%%                {\ .}{{$\circ$}}2 {\ .\ }{{$\circ$}}2
+%%                {>>}{{>>}}2 {>>=}{{>>=}}2
+%%                {|}{{$\mid$}}1               
+%%     }
+
+\usepackage{verbatim}
+\usepackage{float}
+\newenvironment{appix}{\singlespacing\footnotesize\verbatim}{\endverbatim\normalsize\onehalfspacing}
+
+\begin{document}
+\include{title}
+\include{refer}
+\setcounter{page}{2}
+\tableofcontents
+\include{intro}
+\include{first}
+\include{second}
+\include{third}
+\include{fourth}
+\include{concl}
+
+\nocite{*}
+\def\bblfeb{February}           %some bug, probably in gost705
+\def\bbldec{December}           %some bug, probably in gost705
+\def\bblaug{August}           %some bug, probably in gost705
+\def\bbljun{June}           %some bug, probably in gost705
+\def\bblmay{May}           %some bug, probably in gost705
+\def\bbloct{October}           %some bug, probably in gost705
+\def\bblsep{September}
+\def\bblnov{November}
+\def\bblapr{April}
+\bibliographystyle{gost705}
+\bibliography{refs}
+
+\include{appendix}
+\end{document}

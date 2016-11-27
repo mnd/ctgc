@@ -1,0 +1,1147 @@
+% -*- mode: LaTeX; mode: auto-fill; mode: flyspell; coding: koi8-r; -*-
+\appendix
+\chapter{Минимальная реализация мини-языка.}
+\begin{appix}
+member_unified([E | _], E).
+member_unified([_ | L1], E) :- member_unified(L1, E).
+
+delete_unified([], _, []).
+delete_unified([E | List1], E, List2) :- delete_unified(List1, E, List2).
+delete_unified([A | List1], E, [A | List2]) :- delete_unified(List1, E, List2).
+
+change_unified([], _, _, []).
+change_unified([E | List1], E, A, [A | List2]) :-
+	change_unified(List1, E, A, List2).
+change_unified([B | List1], E, A, [B | List2]) :-
+	change_unified(List1, E, A, List2).
+
+%% m(next_queue_name, [queues]) -- структура памяти
+%% q(queue_name, next_var_name, [[vars]]) -- структура очереди
+%% v(var_name, value) -- структура для переменных
+%% value = ref(queue_name, var_name) | number -- переменные это ссылки или числа
+empty(m(0, [])).
+push_queue(N, m(N, Qs), m(N1, [q(N, 0, [[]])|Qs])) :-
+    N1 is N + 1, !.
+pop_queue(m(N, [_|Qs]), m(N, Qs)) :- !.
+
+enqueue(QName, m(N, Qs), m(N, Qs1)) :-
+    enqueue_internal(QName, Qs, Qs1), !.
+enqueue_internal(QName, [q(QName, V, Q) | Qs], [q(QName, V, [[]|Q]) | Qs]).
+enqueue_internal(QName, [Q | Qs], [Q | Qs1]) :-
+    enqueue_internal(QName, Qs, Qs1).
+
+dequeue(QName, m(N, Qs), m(N, Qs1)) :-
+    dequeue_internal(QName, Qs, Qs1), !.
+dequeue_internal(QName, [q(QName, V, Q1) | Qs], [q(QName, V, Q2) | Qs]) :-
+    dequeue_list(Q1, Q2).
+dequeue_internal(QName, [Q | Qs], [Q | Qs1]) :-
+    dequeue_internal(QName, Qs, Qs1).
+dequeue_list([_], []).
+dequeue_list([X|Xs], [X|R]) :- dequeue_list(Xs, R).
+
+new_var(QName, ref(QName, VName), Value, m(N, Qs), m(N, Qs1)) :-
+    new_var_internal(QName, VName, Value, Qs, Qs1), !.
+new_var_internal(QName, V, Value,
+		 [q(QName, V,  [Vs               | Vss]) | Qs],
+		 [q(QName, V1, [[v(V, Value)|Vs] | Vss]) | Qs]) :-
+    V1 is V + 1.
+new_var_internal(QName, VName, Value, [Q|Qs], [Q|Qs1]) :-
+    new_var_internal(QName, VName, Value, Qs, Qs1).
+
+set_var(ref(QName, VName), Value, m(N, Qs), m(N,Qs1)) :-
+    set_var_queue(QName, VName, Value, Qs, Qs1), !.
+set_var_queue(QName, VName, Value,
+		 [q(QName, V, Vs) |Qs],
+		 [q(QName, V, Vs1)|Qs]) :-
+    set_var_queue_internal(VName, Value, Vs, Vs1).
+set_var_queue(QName, VName, Value, [Q|Qs], [Q|Qs1]) :-
+    set_var_queue(QName, VName, Value, Qs, Qs1).
+set_var_queue_internal(VName, Value, [V|Vs], [V1|Vs]) :-
+    member_unified(V, v(VName, X)),
+    change_unified(V, v(VName, X), v(VName, Value), V1).
+set_var_queue_internal(VName, Value, [V|Vs], [V|Vs1]) :-
+    set_var_queue_internal(VName, Value, Vs, Vs1).
+
+change_var(ref(QName, VName), Value, m(N, Qs), m(N,Qs1)) :-
+    change_var_queue(QName, VName, Value, Qs, Qs1), !.
+change_var_queue(QName, VName, Value,
+		 [q(QName, V, Vs) |Qs],
+		 [q(QName, V, Vs1)|Qs]) :-
+    change_var_queue_internal(VName, Value, Vs, Vs1).
+change_var_queue(QName, VName, Value, [Q|Qs], [Q|Qs1]) :-
+    change_var_queue(QName, VName, Value, Qs, Qs1).
+change_var_queue_internal(VName, Value,
+			  [V                   | Vs],
+			  [[v(VName, Value)|V] | Vs]).
+
+get_var(ref(QName, VName), Value, m(N, Qs), m(N, Qs)) :-
+    get_var_queue(QName, VName, Value, Qs), !.
+get_var(V, V, M, M).
+get_var_queue(QName, VName, Value, [q(QName, _, Vs) | _]) :-
+    get_var_queue_internal(VName, Value, Vs).
+get_var_queue(QName, VName, Value, [_ | Qs]) :-
+    get_var_queue(QName, VName, Value, Qs).
+get_var_queue_internal(VName, Value, [V|_]) :-
+    member_unified(V, v(VName, Value)).
+get_var_queue_internal(VName, Value, [_|Vs]) :-
+    get_var_queue_internal(VName, Value, Vs).
+
+
+eval1(enqueue(N)) --> enqueue(N).
+eval1(dequeue(N)) --> dequeue(N).
+eval1(new(N, X, ref(Q,V))) -->
+    get_var(ref(Q,V), Val),
+    new_var(N, X, Val).
+eval1(new(N, X, Val)) --> new_var(N, X, Val).
+eval1(change(X, ref(Q,V))) -->
+    get_var(ref(Q,V), Val),
+    change_var(X, Val).
+eval1(change(X, Val)) --> change_var(X, Val).
+eval1(set(X, ref(Q,V))) -->
+    get_var(ref(Q,V), Val),
+    set_var(X, Val).
+eval1(set(X, Val)) --> set_var(X, Val).
+eval1(sum(X, Y, R)) -->
+    get_var(X, A), get_var(Y, B),
+    {C is A + B},
+    set_var(R, C).
+eval1(sub(X, Y, R)) -->
+    get_var(X, A), get_var(Y, B),
+    {C is A - B},
+    set_var(R, C).
+eval1(mul(X, Y, R)) -->
+    get_var(X, A), get_var(Y, B),
+    {C is A * B},
+    set_var(R, C).
+eval1(div(X, Y, R)) -->
+    get_var(X, A), get_var(Y, B),
+    {C is A / B},
+    set_var(R, C).
+eval1(print(ref(Q,V))) -->
+    get_var(ref(Q,V), A),
+    {write(ref(Q,V)), write(' = '), write(A), nl}.
+eval1(print(X)) -->
+    {write(X), nl}.
+eval1(pass, M, M).
+
+eval([], M, M) :- !.
+eval([block(N, Body) | Cs]) -->
+    push_queue(N), eval(Body), pop_queue, eval(Cs).
+eval([if(N, Cond, _Then, Else) | Cs]) -->
+    get_var(Cond, 0),
+    push_queue(N), eval(Else), pop_queue, eval(Cs).
+eval([if(N, Cond, Then, _Else) | Cs]) -->
+    get_var(Cond, _),
+    push_queue(N), eval(Then), pop_queue, eval(Cs).
+eval([for(N1, N2, Pres, Cond, Posts, Body) | Cs]) -->
+    push_queue(N1), eval(Pres), eval_for_first(N1, N2, Cond, Posts, Body),
+    pop_queue,
+    eval(Cs).
+eval([call(Name, Qs, As) | Cs]) -->
+    {function(Name, N, Qs, As, Body)},
+    push_queue(N),
+    eval(Body),
+    pop_queue,
+    eval(Cs).
+eval([C | Cs]) -->
+    eval1(C), eval(Cs).
+
+eval_for_first(_N1, _N2, Cond, _Posts, _Body) -->
+    get_var(Cond, 0),
+    pop_queue.
+eval_for_first(N1, N2, Cond, Posts, Body) -->
+    get_var(Cond, _),
+    {copy_term(block(N2, Body), B)},
+    eval([B]),
+    enqueue(N1),
+    eval(Posts),
+    eval_for(N1, N2, Cond, Posts, Body).
+eval_for(N1, _N2, Cond, _Posts, _Body) -->
+    get_var(Cond, 0),
+    dequeue(N1).
+eval_for(N1, N2, Cond, Posts, Body) -->
+    get_var(Cond, _),
+    dequeue(N1),
+    {copy_term(block(N2, Body), B)},
+    eval([B]),
+    enqueue(N1),
+    eval(Posts),
+    eval_for(N1, N2, Cond, Posts, Body).
+
+start(Main) :-
+    empty(M),
+    eval([call(Main, [], [])], M, _M1).
+
+
+function(fact, N, [RQueue], [V, Result],
+[ new(N, R, 1),
+  for(N1, N2,
+      [ new(N1, A, V)
+      ],
+      A,
+      [ change(A, A),	
+	sub(A, 1, A)
+      ],
+      [ new(N2, Temp, 0),
+	mul(A, R, Temp),
+	set(R, Temp)
+      ]
+     ),
+  new(RQueue, Result, R)
+]).
+
+function(main, M, [], [],
+[ new(M, V, 10),
+  enqueue(M),
+  call(fact, [M], [V, Result]),
+  dequeue(M),
+  print(Result)
+]).
+
+:- initialization(start(main)).
+\end{appix}
+
+\chapter{Реализация тестов.}
+\begin{appix}
+member_unified([E | _], E).
+member_unified([_ | L1], E) :- member_unified(L1, E).
+
+delete_unified([], _, []).
+delete_unified([E | List1], E, List2) :- delete_unified(List1, E, List2).
+delete_unified([A | List1], E, [A | List2]) :- delete_unified(List1, E, List2).
+
+change_unified([], _, _, []).
+change_unified([E | List1], E, A, [A | List2]) :-
+	change_unified(List1, E, A, List2).
+change_unified([B | List1], E, A, [B | List2]) :-
+	change_unified(List1, E, A, List2).
+
+%% -*- mode: prolog -*-
+%%% helpers.pl --- Define parser helpers functions.
+
+
+atom_concat_all(_, [], []).
+atom_concat_all(A, [F|Fs], [R|Rs]) :-
+    atom_concat(A, F, R),
+    atom_concat_all(A, Fs, Rs).
+
+avg(L, R) :-
+    length(L, Len),
+    (   Len = 0 ->
+	R = 0
+    ;   sum(L, Sum),
+	R is Sum / Len
+    ).
+
+sum([], 0).
+sum([X|L], Sum) :-
+    sum(L, Sum1),
+    Sum is Sum1 + X.
+
+is_space(' ').
+is_space('\t').
+is_space('\r').
+is_space('\n').
+
+is_char(X) :- 
+    char_code(X, R),
+    char_code('a', AL),
+    char_code('z', ZL),
+    char_code('A', AU),
+    char_code('Z', ZU),
+    char_code('_', Under),
+    (   R >= AL, R =< ZL
+    ;   R >= AU, R =< ZU
+    ;   R =:= Under
+    ), !.
+
+is_number('0').
+is_number('1').
+is_number('2').
+is_number('3').
+is_number('4').
+is_number('5').
+is_number('6').
+is_number('7').
+is_number('8').
+is_number('9').
+
+is_punct(X) :- \+ is_char(X), \+ is_number(X), \+ is_space(X).
+
+simple_ignore_before(X) --> [X].
+simple_ignore_before(X) --> [_], simple_ignore_before(X).
+
+ignore_before(X) --> [X].
+ignore_before(X) --> ['\"'],  simple_ignore_before('\"'),  ignore_before(X).
+ignore_before(X) --> ['\''], simple_ignore_before('\''), ignore_before(X).
+ignore_before(X) --> ['('], ignore_before(')'), ignore_before(X).
+ignore_before(X) --> ['{'], ignore_before('}'), ignore_before(X).
+ignore_before(X) --> ['['], ignore_before(']'), ignore_before(X).
+ignore_before(X) --> [_], ignore_before(X).
+
+simple_word_before(X, W) --> simple_word_before(X, '$noname', W).
+
+simple_word_before(X, W, W) --> [X].
+simple_word_before(X, _, W) --> 
+    [W1], simple_word_before(X, W1, W).
+
+subtraction([],_,[]).
+subtraction([A|As], Bs, Rs) :-
+    memberchk(A, Bs), subtraction(As, Bs, Rs).
+subtraction([A|As], Bs, [A|Rs]) :-
+    subtraction(As, Bs, Rs).
+
+intersection([],_,[]).
+intersection([A|As], Bs, [A|Rs]) :-
+    memberchk(A, Bs), intersection(As, Bs, Rs).
+intersection([_|As], Bs, Rs) :- intersection(As, Bs, Rs).
+
+iterate(0, _, []) :- !.
+iterate(N, E, R) :-
+    N1 is N-1,
+    iterate(N1, E, Es),
+    append(E, Es, R).
+
+append_to_all(_,[],[]).
+append_to_all(X, [Y|Ys], [[X|Y]|Rs]) :-
+    append_to_all(X, Ys, Rs).
+
+blockise_all([],[]).
+blockise_all([X|Xs], [block(X) | Ys]) :- blockise_all(Xs, Ys).
+
+forall_append_to_all([], _, []).
+forall_append_to_all([X|Xs], Y, R) :-
+    append_to_all(X, Y, R1),
+    forall_append_to_all(Xs, Y, R2),
+    append(R1, R2, R).
+
+format_code(Cs) :- format_code('', Cs).
+format_code(P, []) :- write(P), write('[]'), nl.
+format_code(P, Cs) :-
+    list(Cs),
+    write(P), write('['), nl,
+    atom_concat(P, '  ', P1),
+    format_code_list(P1, Cs),
+    write(P), write(']'), nl.
+format_code(P, class(Name, Code)) :-
+    write(P), write('class('), write(Name), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Code),
+    write(P), write(')'), nl, nl.
+format_code(P, if(Cond, Then, Else)) :-
+    write(P), write('if('), write(Cond), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Then),
+    write(P), write('else'), nl,
+    format_code(P1, Else),
+    write(P), write(')'), nl.
+format_code(P, for(Cond, Body)) :-
+    write(P), write('for('), write(Cond), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+format_code(P, try(Body)) :-
+    write(P), write('try('), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+format_code(P, synchronized(Body)) :-
+    write(P), write('synchronized(somevar,'), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+format_code(P, while(Cond, Body)) :-
+    write(P), write('while('), write(Cond), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+format_code(P, func(Name, As, Code)) :-
+    write(P), write('func('), write(Name), write(', '), write(As), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Code),
+    write(P), write(')'), nl, nl.
+%%post process format
+format_code(P, func(Name, Code)) :-
+    write(P), write('func('), write(Name), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Code),
+    write(P), write(')'), nl, nl.
+format_code(P, cycle(Cond, Body)) :-
+    write(P), write('cycle('), write(Cond), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+format_code(P, block(Body)) :-
+    write(P), write('block('), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P), write(')'), nl.
+%% 
+format_code(P, paths(Bs)) :-
+    write(P), write('paths('), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Bs),
+    write(P), write(')'), nl.
+format_code(P, cycle(Cond, Body, Post)) :-
+    write(P), write('cycle('), write(Cond), write(','), nl,
+    atom_concat(P, '  ', P1),    
+    format_code(P1, Body),
+    write(P1), write(', '), write(Post), nl,
+    write(P), write(')'), nl.
+%% stoper
+format_code(P, C) :- write(P), write(C), nl.
+
+format_code_list(_, []).
+format_code_list(P, [C|Cs]) :-
+    format_code(P, C),
+    format_code_list(P,Cs).%% -*- mode: prolog -*-
+%%% parse.pl --- Parse java functions.
+
+
+
+read_tokens_file(File_Name, R) :- %read file and get tokens
+    open(File_Name, read, Stream, [type(text), eof_action(eof_code)]),
+    read_chars(Stream, R1),
+    phrase(tokenize_java_file(R), R1),
+    close(Stream), !.
+
+read_chars(Stream,Ts) :-
+    get_char(Stream, T),
+    (   T = end_of_file ->
+	Ts = []
+    ;   read_chars(Stream, Fs),
+	Ts = [T|Fs]
+    ).
+chars(X, R) --> [X1], {is_char(X1), atom_concat(X, X1, X2)}, chars(X2, R).
+chars(X, X, R, R).
+
+numbers(X, R) --> [X1], {is_number(X1), atom_concat(X, X1, X2)}, numbers(X2, R).
+numbers(X, X, R, R).
+
+alnums(X, R) --> [X1],
+    { ( is_char(X1) ; is_number(X1) ), atom_concat(X, X1, X2) }, alnums(X2, R).
+alnums(X, X, R, R).
+
+at_sym_args --> ['('], simple_ignore_before(')').
+at_sym_args(L,L).
+
+tokenize_java_file([],[],[]).
+tokenize_java_file(Rs) --> ['/','/'], simple_ignore_before('\n'),       tokenize_java_file(Rs).
+tokenize_java_file(Rs) --> ['/','*'], simple_ignore_before('*'), ['/'], tokenize_java_file(Rs).
+tokenize_java_file(Rs) --> ['\\', _], tokenize_java_file(Rs). %ignore escaped symbol
+tokenize_java_file(Rs) --> ['@', X], {is_char(X)}, chars(X,_R), at_sym_args,
+    tokenize_java_file(Rs). %ignore @directive
+tokenize_java_file(R) --> [X], {is_space(X)}, tokenize_java_file(R).
+tokenize_java_file([R|Rs]) --> [X], {is_char(X)}, alnums(X, R), tokenize_java_file(Rs).
+tokenize_java_file([R|Rs]) --> [X], {is_number(X)}, numbers(X, R), tokenize_java_file(Rs).
+tokenize_java_file([R|Rs]) --> [R], tokenize_java_file(Rs).
+
+
+parse_java([], [], []) :- !.	    %parse java file
+parse_java([]) --> ['}'], {!}.    %end of class
+%% Ignore packages, imports, interfaces
+parse_java(R) --> [import], {!}, ignore_before(';'), parse_java(R).
+parse_java(R) --> [package], {!}, ignore_before(';'), parse_java(R).
+parse_java(R) --> [interface], {!}, ignore_before('{'), ignore_before('}'), parse_java(R).
+%% Static code block
+parse_java(R) --> [static, '{'], {!}, ignore_before('}'), parse_java(R).
+%% type modifiers
+parse_java(R) --> type_modifier, {!}, parse_java(R).
+%% Class
+parse_java([class(ClassName,R1) | R2]) -->
+    [class, ClassName], {!}, ignore_before('{'),
+    parse_java(R1), parse_java(R2).
+%% Variable. Ignore it
+parse_java(R) --> type_name, parse_name(_), [';'], parse_java(R).
+parse_java(R) --> type_name, parse_name(_), ['='], ignore_before(';'), parse_java(R).
+%% Function
+parse_java([func(Function_Name, As, Code)|Fs]) --> 
+    ( type_name ; [] ), [Function_Name, '('],
+    parse_definition_args(As),
+    parse_body_function(As,Code),
+    parse_java(Fs).
+
+parse_body_function(_, [])    --> [';'].
+parse_body_function(As, Code) -->
+    simple_ignore_before('{'),
+    parse_function(As, Code).
+
+type_name --> [_, '<'], simple_ignore_before('>'), !.
+type_name --> [_, '['], simple_ignore_before(']'), !.
+type_name --> [_, '.'], type_name.
+type_name --> [_].
+
+type_modifier --> [public].
+type_modifier --> [static].
+type_modifier --> [private].
+type_modifier --> [volatile].
+type_modifier --> [abstract].
+type_modifier --> [protected].
+type_modifier --> [final].
+
+
+parse_definition_args([]) --> [')'], {!}.
+parse_definition_args(As) --> [','], parse_definition_args(As).
+parse_definition_args(As) --> type_modifier, parse_definition_args(As).
+parse_definition_args([A|As]) --> type_name, [A], parse_definition_args(As). 
+
+parse_function(_, []) --> ['}'], {!}.	%end of function.
+parse_function(Vars, X) --> type_modifier, parse_function(Vars, X).
+parse_function(Vars, [expr(R) | X]) -->
+    [return], {!}, parse_expression(E), {intersection(E, Vars, R)},
+    parse_function(Vars, X).
+parse_function(Vars, X) -->
+    [continue, ';'],
+    parse_function(Vars, X).
+parse_function(Vars, X) -->
+    [break, ';'],
+    parse_function(Vars, X).
+parse_function(Vars, [expr(R) | X]) -->
+    [throw], {!}, parse_expression(E), {intersection(E, Vars, R)},
+    parse_function(Vars, X).
+parse_function(Vars, [if(expr(Cond), Then, Else) | X]) -->
+    [if, '('], {!}, parse_expression(Cond1), {intersection(Cond1, Vars, Cond)},
+    parse_then(Vars, Then), parse_else(Vars, Else),
+    parse_function(Vars, X).
+parse_function(Vars1, X) -->
+    [for, '('], {!}, parse_for_expression(V, Cond1, Cond2),
+    {   ( V = [] -> Vars = Vars1 ; Vars = [V|Vars1] ),
+        intersection(Cond1, Vars, Cond11),
+	intersection(Cond2, Vars, Cond21)
+    },
+    parse_body(Vars, Body),
+    parse_function(Vars1, X1),
+    {   V = [] ->
+	X = [for([expr(Cond11), expr(Cond21)], Body) | X1]
+    ;   X = [for([create(V,expr(Cond11)), expr(Cond21)], Body) | X1]
+    }.
+parse_function(Vars, [while([expr([]), expr(Cond)], Body) | X]) -->
+    [while, '('], {!}, parse_expression(Cond1), {intersection(Cond1, Vars, Cond)},
+    parse_body(Vars, Body),
+    parse_function(Vars, X).
+parse_function(Vars, [synchronized(Body) | X]) -->
+    [synchronized, '('], {!},
+    ignore_before(')'), ['{'],
+    parse_function(Vars, Body),
+    parse_function(Vars, X).
+parse_function(Vars, [try(Body) | X]) -->
+    [try, '{'], {!}, parse_function(Vars, Body),
+    parse_function(Vars, X).
+parse_function(Vars, X) -->	%ignore catch block
+    [catch], {!}, ignore_before('{'),
+    parse_function(Vars, _Body),
+    parse_function(Vars, X).
+parse_function(Vars, [finally(Body) | X]) -->
+    [finally, '{'], {!}, parse_function(Vars, Body),
+    parse_function(Vars, X).
+parse_function(Vars, [switch([expr(Cond)], Body) | X]) -->
+    [switch, '('], {!}, parse_expression(Cond1), {intersection(Cond1, Vars, Cond)},
+    ['{'], parse_function(Vars, Body),
+    parse_function(Vars, X).
+parse_function(Vars, X) -->
+    [case], {!}, simple_ignore_before(':'),
+    parse_function(Vars, X).
+parse_function(Vars, X) -->
+    [default, ':'], {!},
+    parse_function(Vars, X).
+parse_function(Vars, X) -->
+    [break, ';'], {!},
+    parse_function(Vars, X).
+%% TODO: Parse 'finaly' ...
+parse_function(Vars, [create(V, expr([]))|X]) -->
+    type_name, [V, ';'], parse_function([V|Vars], X).
+parse_function(Vars, [create(V, expr(Vs))|X]) --> %create new local variable
+    type_name, [V, '='], {sub_atom(V, 0, 1, _, V1), is_char(V1)},
+    parse_expression(Vs1),
+    { intersection(Vs1, [V|Vars], Vs) }, % count only variables from Args
+    parse_function([V|Vars], X).
+parse_function(Vars, Rs) --> %change local variable
+    [V], (['='] ; ['+', '='] ; ['*', '='] ; ['/', '='] ; ['-', '=']),
+    parse_expression(Vs1),
+    { intersection(Vs1, Vars, Vs) }, % count only variables from Args
+    {   memberchk(V, Vars) ->	     % change/2 when V from Vars
+	Rs = [change(V, expr(Vs)) | X]
+    ;   Rs = [expr(Vs) | X]
+    },
+    parse_function(Vars, X).
+parse_function(Vars, Rs) --> %in place change local variable
+    parse_name(V1s), (['='] ; ['+', '='] ; ['*', '='] ; ['/', '='] ; ['-', '=']),
+    parse_expression(V2s),
+    {   append(V1s,V2s, Vs1),
+	intersection(Vs1, Vars, Vs), % count only variables from Args
+	Rs = [expr(Vs) | X]
+    },
+    parse_function(Vars, X).
+parse_function(Vars, [expr(Vs) | X]) -->
+    parse_expression(Vs1),
+    { intersection(Vs1, Vars, Vs) },
+    parse_function(Vars, X).
+parse_function(_Args, []) --> ignore_before('}').
+
+parse_else(Vars, Else) --> [else, '{'], {!}, parse_function(Vars, Else).
+parse_else(Vars, [if(expr(Cond), Then, Else)]) --> [else, if, '('], {!},
+    parse_expression(Cond1), {intersection(Cond1, Vars, Cond)},
+    parse_then(Vars, Then), parse_else(Vars, Else).
+parse_else(Vars, [expr(Else)]) --> [else], {!},
+    parse_expression(Else1), {intersection(Else1, Vars, Else)}.
+parse_else(_, [], L, L).
+
+parse_then(Vars, Then) -->
+    ['{'], parse_function(Vars, Then).
+parse_then(Vars, [expr(Then)]) -->
+    parse_expression(Then1), {intersection(Then1, Vars, Then)}.
+
+parse_body(Vars, Body) --> parse_then(Vars, Body).
+
+
+parse_for_expression(V, Cond1, []) --> type_name, [V, ':'], parse_expression(Cond1).
+parse_for_expression(V, Cond1, Cond) -->
+    type_name, [V, '='], parse_expression(Cond1),
+    parse_expression(Cond2), parse_expression(Cond3),
+    { append(Cond2, Cond3, Cond) }.
+parse_for_expression([], Cond1, Cond) -->
+    parse_expression(Cond1),
+    parse_expression(Cond2), parse_expression(Cond3),
+    { append(Cond2, Cond3, Cond) }.
+parse_for_expression([], Cond1, []) --> parse_expression(Cond1).
+
+%% parse expression
+parse_expression([]) --> [';'], {!}.	%end of expression
+parse_expression([]) --> [')'], {!}.	%end of subexpression
+parse_expression([]) --> [']'], {!}.	%end of other subexpression
+parse_expression(As) --> ['{'], %function code subexpression
+    ignore_before('}'), parse_expression(As).
+%% new expression
+parse_expression(As) -->
+    [new], type_name, ['('], parse_args(As1), parse_expression(As2),
+    {append(As1, As2, As)}.
+parse_expression([]) -->
+    [new], ignore_before(';').
+parse_expression(As) -->
+    [throw], parse_expression(As).
+%% type converting
+parse_expression(As) --> ['('], type_name, [')'], parse_expression(As).
+%% arithmetic
+parse_expression(As) -->
+    operator,
+    parse_expression(As).
+parse_expression(As) -->
+    name_or_call_or_expression(As1),
+    parse_expression(As2),
+    { append(As1, As2, As) }.	%variables in first + variables in last
+%% WARNING: May be danger.
+parse_expression([]) --> ignore_before(';'). % Some hard to parse expression. Just ignore.
+
+name_or_call_or_expression(As) --> ['('], parse_expression(As).
+name_or_call_or_expression(As) --> ['.'], function_call(As).
+name_or_call_or_expression(As) --> function_call(As).
+name_or_call_or_expression(['$string']) --> ['"'], simple_ignore_before('"').
+name_or_call_or_expression(N) --> parse_name(N).
+
+parse_name([N|Ns]) --> [N, '.'], parse_name(Ns).
+parse_name([N|Ns]) -->
+    [N, '['], parse_expression(Ns1), parse_sub_name(Ns2),
+    {append(Ns1, Ns2, Ns)}.
+parse_name([N|Ns]) --> [N, '['], parse_expression(Ns).
+parse_name([N]) --> [N].
+
+parse_sub_name(Ns) --> ['.'], parse_name(Ns).
+parse_sub_name([],L,L).
+
+function_call(As) -->
+    [A], function_names,
+    ['('], parse_args(As1), function_subcall(As2), {append([A|As1], As2, As)}.
+function_call(As) -->
+    [_Function_Name],		%not on object. Regular function.
+    ['('], parse_args(As1), function_subcall(As2), {append(As1, As2, As)}.
+
+function_subcall(As) -->	%func1().func2().func3()
+    function_names, ['('], parse_args(As1),
+    function_subcall(As2), {append(As1, As2, As)}.
+function_subcall([], L, L).
+
+function_names --> ['.', _Name], function_names. %% .subobj.subsubobj.func
+function_names --> ['.', _Name]. %% .funcName
+
+parse_args([]) --> [')'], {!}.
+parse_args(As) --> [','], parse_args(As).
+parse_args(As) --> [new], parse_args(As).
+parse_args(As) --> name_or_call_or_expression(As1), {!}, parse_args(As2), {append(As1, As2, As)}.
+
+operator --> ['+'].
+operator --> ['-'].
+operator --> ['*'].
+operator --> ['/'].
+operator --> ['='].
+operator --> ['!'].
+operator --> ['|'].
+operator --> ['^'].
+operator --> ['~'].
+operator --> ['&'].
+operator --> ['>', '>', '>'].
+operator --> ['>', '>'].
+operator --> ['<', '<'].
+operator --> ['>'].
+operator --> ['<'].
+operator --> ['?'].
+operator --> [':'].
+operator --> [instanceof].
+
+parse_java_file(Name, R) :-
+    read_tokens_file(Name, R1), phrase(parse_java(R), R1).
+%% -*- mode: prolog -*-
+%%% post_process.pl --- Extract Functions and add necessary destroy/1 instructions
+
+
+
+
+%% extract all functions from class tree.
+extract_functions([], []) :- !.
+extract_functions([func(N,As,Code)|Us], [func(N,Code2)|R]) :-
+    simplify_function_code(Code, Code1),
+    args_to_creates(As, C1), append(C1, Code1, Code2),
+    extract_functions(Us, R).
+extract_functions([class(_Name,U1)|Us], R) :-
+    extract_functions(U1, R1),
+    extract_functions(Us, R2),
+    append(R1, R2, R).
+
+args_to_creates([],[]) :- !.
+args_to_creates([A|As],[create(A, expr([])) | CAs]) :-
+    args_to_creates(As, CAs).
+
+%% replace all cycles with 'cycle(condition, body)'
+%% replace all blocks with 'block(body)'
+simplify_function_code([], []).
+simplify_function_code([expr(E)|C1], [expr(E)|C2]) :-
+    simplify_function_code(C1, C2).
+simplify_function_code([create(V,E)|C1], [create(V,E)|C2]) :-
+    simplify_function_code(C1, C2).
+simplify_function_code([change(V,E)|C1], [change(V,E)|C2]) :-
+    simplify_function_code(C1, C2).
+simplify_function_code([if(E,Then,Else)|C1], [if(E, Then1, Else1)|C2]) :-
+    simplify_function_code(Then, Then1),
+    simplify_function_code(Else, Else1),
+    simplify_function_code(C1, C2).
+simplify_function_code([while(E,B)|C1], [cycle(E,B1)|C2]) :-
+    simplify_function_code(B,B1),
+    simplify_function_code(C1, C2).
+simplify_function_code([for(E,B)|C1], [cycle(E,B1)|C2]) :-
+    simplify_function_code(B,B1),
+    simplify_function_code(C1, C2).
+simplify_function_code([synchronized(B)|C1], [block(B1)|C2]) :-
+    simplify_function_code(B,B1),
+    simplify_function_code(C1, C2).
+simplify_function_code([try(B)|C1], [block(B1)|C2]) :-
+    simplify_function_code(B,B1),
+    simplify_function_code(C1, C2).
+simplify_function_code([finally(B)|C1], [block(B1)|C2]) :-
+    simplify_function_code(B,B1),
+    simplify_function_code(C1, C2).
+simplify_function_code([switch(E,B)|C1], [block(B1)|C2]) :-
+    append(E,B,B0),
+    simplify_function_code(B0,B1),
+    simplify_function_code(C1, C2).
+
+add_destroy_instructions([], []).
+add_destroy_instructions([func(N,Code)|Fs], [func(N,Code1)|Fs1]) :-
+    add_destroy_to_block_top(Code, Code1),
+    add_destroy_instructions(Fs, Fs1).
+
+add_destroy_to_block_top(Code, Code1) :-
+    add_destroy_to_block_top([], Code, Code1).
+add_destroy_to_block_top(V1, Code, Code1) :-
+    collect_top_level_create(Code, Vars),
+    reverse(Code, RCode),
+    append(V1, Vars, Vars1),
+    add_destroy_to_block(Vars1, RCode, RCode1),
+    reverse(RCode1, Code1).
+    
+%% collect 'create/2' on top level
+collect_top_level_create([], []).
+collect_top_level_create([create(N,_)|Cs], [N|Vs]) :-
+    collect_top_level_create(Cs, Vs).
+collect_top_level_create([_|Cs], Vs) :- 
+    collect_top_level_create(Cs, Vs).
+
+
+add_destroy_to_block([], [], []).
+add_destroy_to_block(Vars, [], [destroy(Vars)]).
+add_destroy_to_block(Vars, [C|Cs], R) :-
+    C = expr(Ls),
+    intersection(Vars, Ls, V1),	%vars that used last time
+    (   V1 = [] ->
+	R = [C | Cs1]
+    ;   R = [destroy(V1), C | Cs1]
+    ),
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+add_destroy_to_block(Vars, [C|Cs], R) :-
+    C = change(V, expr(Ls)),
+    intersection(Vars, [V|Ls], V1),	%vars that used last time
+    (   V1 = [] ->
+	R = [C | Cs1]
+    ;   R = [destroy(V1), C | Cs1]
+    ),
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+add_destroy_to_block(Vars, [C|Cs], R) :-
+    C = create(V, expr(Ls)),
+    intersection(Vars, [V|Ls], V1),	%vars that used last time
+    (   V1 = [] ->
+	R = [C | Cs1]
+    ;   R = [destroy(V1), C | Cs1]
+    ),
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+add_destroy_to_block(Vars, [block(Bs)|Cs], [block(Bs1) | Cs1]) :-
+    collect_used_vars([], Bs, Vs),
+    intersection(Vars, Vs, V1),
+    add_destroy_to_block_top(V1, Bs, Bs1), %propogate destroy into block
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+add_destroy_to_block(Vars, [cycle(Hs, Bs)|Cs], R) :-
+    ( Hs = [create(N,_)|_] -> PreCreate = [N] ; PreCreate = [] ),
+    collect_used_vars(PreCreate, Hs, Vs1),
+    collect_used_vars(PreCreate, Bs, Vs2),
+    append(Vs1,Vs2,Vs),
+    intersection(Vars, Vs, V1),
+    add_destroy_to_block_top(Bs, Bs1),
+    append(PreCreate, V1, V2),	%destroy pre created variables after cycle.
+    (   V2 = [] ->
+	R = [cycle(Hs, Bs1, expr([])) | Cs1]
+    ;   R = [cycle(Hs, Bs1, destroy(V2)) | Cs1]
+    ),
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+add_destroy_to_block(Vars, [if(expr(IF), Then, Else)|Cs], [if(expr(IF), Then1, Else1)|Cs1]) :-
+    collect_used_vars([], Then, TV),
+    collect_used_vars([], Else, EV),
+    append(IF, TV, ITV), append(ITV, EV, Vs), %all vars
+    intersection(Vars, Vs, V1),		      %used in if_then_else
+    add_destroy_to_block_top(V1, Then, Then1),    %propagate to Then
+    add_destroy_to_block_top(V1, Else, Else1),    %                  and Else blocks
+    subtraction(Vars, V1, Vars1),
+    add_destroy_to_block(Vars1, Cs, Cs1).
+
+%% Collect variable names used in block.
+collect_used_vars(_, [], []).
+collect_used_vars(IgnoreVars, [expr(Vs) | Bs], R) :-
+    subtraction(Vs, IgnoreVars, Vs1),
+    collect_used_vars(IgnoreVars, Bs, R1),
+    append(Vs1, R1, R).
+collect_used_vars(IgnoreVars, [create(V,expr(Vs)) | Bs], R) :-
+    IgnoreVars1 = [V|IgnoreVars],
+    subtraction(Vs, IgnoreVars1, Vs1),
+    collect_used_vars(IgnoreVars1, Bs, R1),
+    append(Vs1, R1, R).
+collect_used_vars(IgnoreVars, [change(V,expr(Vs)) | Bs], R) :-
+    subtraction([V|Vs], IgnoreVars, Vs1),
+    collect_used_vars(IgnoreVars, Bs, R1),
+    append(Vs1, R1, R).
+collect_used_vars(IgnoreVars, [block(B) | Bs], R) :-
+    collect_used_vars(IgnoreVars, B, R1),
+    collect_used_vars(IgnoreVars, Bs, R2),
+    append(R1, R2, R).
+collect_used_vars(IgnoreVars, [cycle(C, B) | Bs], R) :-
+    (   C = [create(V,_) | _] ->
+	IgnoreVars1 = [V|IgnoreVars]
+    ;   IgnoreVars1 = IgnoreVars
+    ),
+    collect_used_vars(IgnoreVars1, C, R1),
+    collect_used_vars(IgnoreVars1, B, R2),
+    collect_used_vars(IgnoreVars, Bs, R3),    
+    append(R1, R2, R12), append(R12, R3, R).
+collect_used_vars(IgnoreVars, [if(expr(Cs), Then, Else) | Bs], R) :-
+    subtraction(Cs, IgnoreVars, Cs1),
+    collect_used_vars(IgnoreVars, Then, R1),
+    collect_used_vars(IgnoreVars, Else, R2),
+    collect_used_vars(IgnoreVars, Bs, R3),
+    append(Cs1, R1, R01), append(R2, R3, R23), append(R01, R23, R).
+
+%% extract paths. Replace cycle/3 with 10 block/1. Replace if/3 with 2 paths.
+extract_all_paths([],[]).
+extract_all_paths([func(N,P) | Fs], [func(N, paths(Ps)) | Fs1]) :-
+    extract_all_paths_block(P, Ps),
+    extract_all_paths(Fs, Fs1).
+
+
+extract_all_paths_block([], [[]]).
+extract_all_paths_block([cycle([PRE,IN], Body, POST) | Bs], R) :-
+    iterate(10, [IN|Body], Body1),
+    append([PRE|Body1], [POST], Body2),
+    extract_all_paths_block(Body2, Body3),
+    blockise_all(Body3, Body4),
+    extract_all_paths_block(Bs, R1),
+    forall_append_to_all(Body4, R1, R).
+extract_all_paths_block([if(E, Then, Else) | Bs], R) :-
+    extract_all_paths_block([E|Then], Then1),
+    extract_all_paths_block([E|Else], Else1),
+    extract_all_paths_block(Bs, R1),
+    blockise_all(Then1, Then2),
+    blockise_all(Else1, Else2),
+    forall_append_to_all(Then2, R1, R2),
+    forall_append_to_all(Else2, R1, R3),
+    append(R2, R3, R).
+extract_all_paths_block([block(Body) | Bs], R) :-
+    extract_all_paths_block(Body, Body1),
+    extract_all_paths_block(Bs, R1),
+    blockise_all(Body1, Body2),
+    forall_append_to_all(Body2, R1, R).
+extract_all_paths_block([B|Bs], R) :-
+    extract_all_paths_block(Bs, R1),
+    append_to_all(B, R1, R).
+
+only_paths([],[]).
+only_paths([func(_,paths(Ps)) | Fs], R) :-
+    only_paths(Fs, R1),
+    append(Ps, R1, R).
+
+%% test
+test :-
+    test('test.java').
+test(Name) :-
+    paths(Name, R),
+    format_code(R), !.
+
+paths(Name, Paths) :-
+    parse_java_file(Name, R1),
+    extract_functions(R1, R2),
+    add_destroy_instructions(R2, R3),
+    %% filter_func_with_change_instructions,
+    extract_all_paths(R3,R4),
+    only_paths(R4,Paths).
+
+q1(Name, R3) :-
+    parse_java_file(Name, R1),
+    extract_functions(R1, R2),
+    add_destroy_instructions(R2, R3).%% -*- mode: prolog -*-
+%%% memory_models.pl --- N models of memory.
+
+
+
+%% All models is stack of somethinh.
+
+%% Used structure is:
+%% 
+%% m(var_count, [
+%%                r(var_count, [
+%%                               v(var, is_deleted)
+%%                             ])
+%%              ])
+
+%% generic methods
+empty_memory(m(0, [])).
+
+%% block/1
+push_memory_block(m(N, Rs), m(N, [r(0,[]) | Rs])).
+pop_memory_block(m(N, [r(M, Vs) | Rs]), m(N1, Rs)) :-
+    check_all_deleted(Vs),
+    N1 is N - M.
+check_all_deleted([]).
+check_all_deleted([v(_, deleted) | Vs]) :- check_all_deleted(Vs).
+
+%% create/2
+create_variable(Var,		% (var, Old_Mem, New_Mem)
+		m(N,  [r(M,                 Vs)  | Rs]),
+		m(N1, [r(M1, [v(Var, exist)|Vs]) | Rs])) :-
+    N1 is N + 1,
+    M1 is M + 1.
+
+%% First is stack of regions.
+%% destroy/1
+delete_variable_region(Var, m(N, Rs), m(N, Rs1)) :-
+    %% actual deleting not happend before pop_region
+    delete_variable_from_regions(Var, Rs, Rs1).
+delete_variable_from_regions(V, [], _) :-
+    atom_concat('variable for deleting not found: ', V, R),
+    throw(R).
+delete_variable_from_regions(Var, [R|Rs], [R1|Rs]) :-
+    R = r(N, Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    R1 = r(N, Vs1).
+delete_variable_from_regions(Var, [R|Rs], [R|Rs1]) :-
+    delete_variable_from_regions(Var, Rs, Rs1).
+%% change/2
+change_variable_region(Var, m(N, Rs), m(N1, Rs1)) :-
+    N1 is N + 1,
+    change_variable_on_regions(Var, Rs, Rs1).
+change_variable_on_regions(V, [], []) :-
+    atom_concat('Variable for change not found: ', V, R),
+    throw(R).
+change_variable_on_regions(Var, [R|Rs], [R1|Rs]) :-
+    R = r(N,Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    N1 is N + 1,
+    R1 = r(N1, [v(Var, exist) | Vs1]).
+change_variable_on_regions(Var, [R|Rs], [R|Rs1]) :-
+    change_variable_on_regions(Var, Rs, Rs1).
+    
+%% Second is stack of stacks
+%% destroy/1
+delete_variable_stack(Var, m(N, Ss), m(N1, Ss1)) :-
+    delete_variable_from_stacks(Var, Ss, Ss1, M),
+    N1 is N - M.		% decrease to number of poped vars
+delete_variable_from_stacks(_, [], _, _) :-
+    throw('variable for deleting not found').
+delete_variable_from_stacks(Var, [S | Ss], [S1 | Ss], M) :-
+    S = r(N, Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    pop_deleted_from_stack(M, Vs1, Vs2),
+    N1 is N - M,
+    S1 = r(N1, Vs2).
+delete_variable_from_stacks(Var, [S | Ss], [S | Ss1], M) :-
+    delete_variable_from_stacks(Var, Ss, Ss1, M).
+pop_deleted_from_stack(0, [], []).
+pop_deleted_from_stack(0, [v(Var, exist) | Vs], [v(Var, exist) | Vs]).
+pop_deleted_from_stack(N, [v(_,deleted) | Vs], Vs1) :-
+    pop_deleted_from_stack(N1, Vs, Vs1),
+    N is N1 + 1.
+%% change/2
+change_variable_stack(Var, m(N, Rs), m(N1, Rs1)) :-
+    change_variable_on_stacks(Var, Rs, Rs1, M),
+    N1 is N + M.
+change_variable_on_stacks(_, [], _, _) :-
+    throw('Variable for change not found').
+change_variable_on_stacks(Var, [S|Ss], [S1|Ss], M) :-
+    S = r(N,Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    pop_deleted_from_stack(M1, Vs1, Vs2),
+    M is 1 - M1,
+    N1 is N + M,
+    S1 = r(N1, [v(Var, exist)|Vs2]).
+change_variable_on_stacks(Var, [S|Ss], [S|Ss1], M) :-
+    change_variable_on_stacks(Var, Ss, Ss1, M).
+
+%% Third is stack of queues
+%% destroy/1
+delete_variable_queue(Var, m(N, Ss), m(N1, Ss1)) :-
+    delete_variable_from_queue(Var, Ss, Ss1, M),
+    N1 is N - M.		% decrease to number of shifted vars
+delete_variable_from_queue(_,[],[],_) :-
+    throw('variable for deleting not found').
+delete_variable_from_queue(Var, [Q|Qs], [Q1|Qs], M) :-
+    Q = r(N,Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    shift_deleted_from_queue(M, Vs1, Vs2),
+    N1 is N - M,
+    Q1 = r(N1, Vs2).
+delete_variable_from_queue(Var, [Q|Qs], [Q|Qs1], M) :-
+    delete_variable_from_queue(Var, Qs, Qs1, M).
+shift_deleted_from_queue(M, Vs1, Vs2) :-
+    reverse(Vs1, Vsr1),
+    shift_deleted_from_queue_reverse(M, Vsr1, Vsr2),
+    reverse(Vsr2, Vs2).
+shift_deleted_from_queue_reverse(0, [], []).
+shift_deleted_from_queue_reverse(0, [v(Var, exist)|Vs], [v(Var, exist)|Vs]).
+shift_deleted_from_queue_reverse(M, [v(_, deleted) | Vs], Vs1) :-
+    shift_deleted_from_queue_reverse(M1, Vs, Vs1),
+    M is M1 + 1.
+%% change/2
+change_variable_queue(Var, m(N, Qs), m(N1, Qs1)) :-
+    change_variable_on_queues(Var, Qs, Qs1, M),
+    N1 is N + M.
+change_variable_on_queues(_, [], [], _) :-
+    throw('Variable for change not found').
+change_variable_on_queues(Var, [Q|Qs], [Q1|Qs], M) :-
+    Q = r(N,Vs),
+    member_unified(Vs, v(Var, exist)),
+    change_unified(Vs, v(Var, exist), v(Var, deleted), Vs1),
+    shift_deleted_from_queue(M1, Vs1, Vs2),
+    M = 1 - M1,
+    N1 is N + M,
+    Q1 = r(N1, [v(Var, exist)|Vs2]).
+change_variable_on_queues(Var, [Q|Qs], [Q|Qs1], M) :-
+    change_variable_on_queues(Var, Qs, Qs1, M).%% -*- mode: prolog -*-
+%%% eval.pl --- Eval extracted codes in memory models.
+
+
+eval1(_Type, expr(_), Mem, Mem).
+eval1(_Type, create(Var, _)) -->
+    create_variable(Var).
+eval1(Type, change(Var, _)) -->
+    {atom_concat(change_variable_, Type, Change_Variable)},
+    call(Change_Variable, Var).
+eval1(Type, destroy(Vs)) -->
+    destroy_all(Type, Vs).
+destroy_all(_Type, [], Mem, Mem).
+destroy_all(Type, [V|Vs]) -->
+    {atom_concat(delete_variable_, Type, Delete_Variable)},
+    call(Delete_Variable, V),
+    destroy_all(Type, Vs).
+
+%% Type is one of {queue, stack, region}
+%% eval/3
+eval(Type, Code, List) :-
+    empty_memory(Mem),
+    push_memory_block(Mem, Mem1),
+    eval(Type, Code, RList, Mem1, Mem),
+    reverse(RList, List), !.
+%% eval//3
+eval(Type, Code, RList) -->
+    eval(Type, Code, [], RList).
+%% eval//4
+eval(_Type, [], List, List) -->
+    pop_memory_block.
+eval(Type, [block(Code)|Cs], List, List2) -->
+    push_memory_block,
+    eval(Type, Code, List, List1),
+    eval(Type, Cs, List1, List2).
+eval(Type, [C|Cs], List, List1) -->
+    eval1(Type, C),
+    memory_count(N),		% Write after every operation
+    eval(Type, Cs, [N|List], List1).
+
+memory_count(N, Mem, Mem) :-
+    Mem = m(N, _).
+
+
+eval_paths([], []) :- !.
+eval_paths([P|Ps], [result(R, S, Q) | RSQ]) :-
+    eval(region, P, RegionL), !,
+    eval(stack, P, StackL), !,
+    eval(queue, P, QueueL), !,
+    avg(RegionL, R), avg(StackL, S), avg(QueueL, Q),
+    eval_paths( Ps, RSQ), !.
+
+best([], sq(0,0)).
+best([result(_,S,Q)|Rs], RAs) :-
+    best(Rs, sq(N,M)),
+    N1 is N+1,
+    M1 is M+1,
+    (   S @> Q ->
+	RAs = sq(N1, M)
+    ;   Q @> S ->
+	RAs = sq(N,M1)
+    ;   RAs = sq(N,M)
+    ).
+
+
+evaluate_best(File, Result) :-
+    paths(File, PS),
+    length(PS,N),write(N), nl,
+    eval_paths(PS, Mem),
+    best(Mem, Result).
+
+do_all([]) :- halt.
+do_all([F|Fs]) :-
+    (   file_property(F, type(regular)) ->
+	evaluate_best(F, R1), write(R1),nl
+    ;   true
+    ), do_all(Fs).
+
+do_all :-
+    directory_files('./jruby/', J),
+    atom_concat_all('./jruby/', J, J1),
+    directory_files('./eclipse/', E),
+    atom_concat_all('./eclipse/', E, E1),
+    append(J1, E1, Fs),
+    do_all(Fs).
+
+:- initialization(do_all).
+\end{appix}

@@ -1,0 +1,15 @@
+all: thesis presentation
+
+thesis: thesis.tex title.tex first.tex second.tex third.tex fourth.tex refs.bib intro.tex concl.tex appendix.tex refer.tex
+	pdflatex thesis
+	bibtex thesis
+	pdflatex thesis
+	pdflatex thesis
+
+presentation: presentation.tex
+	pdflatex presentation
+	pdflatex presentation
+
+clean:
+	# rm -f *.pdf *.dvi
+	rm -f *.log *.aux *~ *.bbl *.blg *.nlo *.toc *.out *.nav *.snm *.vrb
